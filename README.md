@@ -1,5 +1,3 @@
-# 📊 README PROFISSIONAL (AJUSTADO À SUA ESTRUTURA)
-Pode substituir seu `README.md` por isso 👇
 # 📊 GitHub Analytics Dashboard
 > Análise crítica da distribuição de visibilidade no ecossistema de código aberto
 ## 🎥 Demonstração
