@@ -3,7 +3,6 @@ Pode substituir seu `README.md` por isso 👇
 # 📊 GitHub Analytics Dashboard
 > Análise crítica da distribuição de visibilidade no ecossistema de código aberto
 ## 🎥 Demonstração
-## 🎥 Demonstração
 [![Assista ao vídeo](https://img.youtube.com/vi/f3LHmchQ9II/0.jpg)](https://www.youtube.com/watch?v=f3LHmchQ9II)
 ## 🧠 Sobre o Projeto
 Este projeto apresenta um dashboard interativo desenvolvido com Python e Streamlit para análise de dados da API do GitHub.
