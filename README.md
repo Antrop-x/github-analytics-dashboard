@@ -1,176 +1,93 @@
-# 🔍 Anatomia do Capital Digital
-
-### Um Dashboard Crítico sobre Visibilidade no GitHub
-
----
-
+# 📊 README PROFISSIONAL (AJUSTADO À SUA ESTRUTURA)
+Pode substituir seu `README.md` por isso 👇
+# 📊 GitHub Analytics Dashboard
+> Análise crítica da distribuição de visibilidade no ecossistema de código aberto
+## 🎥 Demonstração
+[![Assista ao vídeo](https://img.youtube.com/vi/SEU_VIDEO_ID/0.jpg)](https://www.youtube.com/watch?v=SEU_VIDEO_ID)
 ## 🧠 Sobre o Projeto
-
-Este projeto não busca identificar “os melhores repositórios”.
-Ele propõe algo diferente:
-
-> **Analisar como a visibilidade é distribuída dentro do ecossistema de código aberto.**
-
-A partir de dados da API do GitHub, o sistema constrói um painel interativo que permite observar como métricas como *stars* operam como sinais sociais — e não necessariamente como indicadores de qualidade.
-
----
-
+Este projeto apresenta um dashboard interativo desenvolvido com Python e Streamlit para análise de dados da API do GitHub.
+Diferente de abordagens tradicionais, o objetivo não é identificar “os melhores repositórios”, mas investigar:
+> **Como a visibilidade é distribuída no código aberto?**
+A análise considera que métricas como *stars* funcionam como sinais sociais — frequentemente refletindo exposição acumulada, e não necessariamente qualidade técnica.
 ## ⚖️ Problema
-
-Plataformas digitais frequentemente utilizam métricas quantitativas (ex: estrelas) como proxy de relevância.
-
-No entanto:
-
-* Visibilidade não é distribuída de forma equitativa
-* Projetos já populares tendem a acumular ainda mais atenção
-* Pequenos projetos permanecem invisíveis
-
-👉 Isso levanta uma questão central:
-
-> **O que realmente está sendo medido — qualidade ou visibilidade acumulada?**
-
----
-
+- Visibilidade não é distribuída de forma equitativa  
+- Projetos populares acumulam mais atenção  
+- Projetos menores permanecem invisíveis  
+👉 Questão central:
+> **Estamos medindo qualidade ou visibilidade?**
 ## 🎯 Objetivo
-
-Construir um sistema que:
-
-* Colete dados da API do GitHub
-* Estruture esses dados em um pipeline analítico
-* Apresente visualizações interativas
-* Estimule uma leitura crítica sobre métricas de popularidade
-
----
-
-## 🧱 Arquitetura do Projeto
-
+- Coletar dados da API do GitHub  
+- Processar métricas  
+- Construir visualizações interativas  
+- Permitir análise exploratória  
+- Estimular leitura crítica de dados  
+## 🏗️ Estrutura do Projeto
 ```bash
-github-analytics-dashboard/
-│
-├── app.py
-├── pages/
-│   ├── Dashboard.py
-│   ├── Analise.py
-│   └── Metodologia.py
-│
-├── utils/
-│   └── api.py
-│
-├── .streamlit/
-│   └── secrets.toml
-│
-├── requirements.txt
+.
+├── app.py                  # Ponto de entrada do app
+├── core/                   # Lógica de negócio
+├── services/               # Pipeline e processamento
+├── infrastructure/         # Integração com API do GitHub
+├── ui/                     # Interface do usuário
+├── models/                 # Modelos de dados
+├── data/                   # Dados locais (ex: history.csv)
+├── assets/                 # Imagens e recursos visuais
+├── requirements.txt        # Dependências
 └── README.md
+````
+## 🔄 Pipeline de Dados
 ```
-
-### 🔄 Fluxo de Dados
-
-```text
-GitHub API → Coleta (requests)
-           → Cache (Streamlit)
-           → Processamento (pandas)
-           → Visualização (Plotly)
-           → Interface (Streamlit)
+GitHub API → Coleta → Processamento → Análise → Visualização → Interface
 ```
-
 ---
-
-## ⚙️ Tecnologias Utilizadas
-
-* **Python**
-* **Streamlit** — interface interativa
-* **Pandas** — manipulação de dados
-* **Plotly** — visualização
-* **Requests** — integração com API
-* **Git + GitHub** — versionamento
-
----
-
+## ⚙️ Tecnologias
+* Python
+* Streamlit
+* Pandas
+* Plotly
+* Requests
+* Git + GitHub
 ## ⚡ Funcionalidades
-
-* 🔎 Filtro por linguagem de programação
-* 📄 Controle de profundidade da coleta (paginação)
-* 📊 Ranking de repositórios por visibilidade (stars)
-* 📈 Métricas agregadas:
-
-  * Volume total de visibilidade
-  * Pico de atenção
-  * Número de entidades analisadas
-* 🧾 Visualização de dados brutos
-* ⚠️ Tratamento de erros da API
-* 🔐 Integração com token (segurança + estabilidade)
-* ⚡ Cache de dados para performance
-
+* 🔎 Filtro por linguagem
+* 📄 Paginação da API
+* 📊 Ranking por *stars*
+* 📈 Métricas agregadas
+* 🧾 Visualização de dados
+* ⚠️ Tratamento de erros
+* 🔐 Uso de token seguro
+* ⚡ Cache para performance
+## 📊 Insight Principal
+> **A visibilidade é concentrada.**
+Poucos repositórios concentram a maior parte das *stars*, indicando:
+* efeito cumulativo
+* desigualdade estrutural
+* popularidade ≠ qualidade
+## 🧪 Limitações
+* Limites da API do GitHub
+* Stars não representam qualidade
+* Amostragem parcial
+* Sem análise temporal
+## 🚀 Como Executar
+```bash
+git clone https://github.com/jhonmax75/github-analytics-dashboard.git
+cd github-analytics-dashboard
+pip install -r requirements.txt
+streamlit run app.py
+```
 ---
-
-## 🔐 Segurança
-
-O projeto utiliza variáveis sensíveis via:
-
-```toml
+## 🔐 Configuração
+Crie:
+```
 .streamlit/secrets.toml
 ```
-
-Isso evita exposição de tokens no repositório.
-
----
-
-## 🚀 Deploy
-
-O projeto está pronto para deploy no Streamlit Cloud.
-
-### Passos:
-
-1. Subir o repositório no GitHub
-2. Configurar `secrets.toml` no painel do Streamlit
-3. Executar o app
-
----
-
-## 📊 Insight Principal
-
-Os dados revelam um padrão consistente:
-
-> **A visibilidade é concentrada.**
-
-Poucos repositórios concentram grande parte das estrelas, indicando um efeito de acumulação cumulativa.
-
-Isso sugere que:
-
-* Popularidade gera mais popularidade
-* A métrica reforça desigualdades estruturais
-* Rankings refletem exposição, não necessariamente mérito técnico
-
----
-
-## 🧪 Limitações
-
-* Dados limitados pela API do GitHub
-* Stars não representam qualidade técnica
-* Amostragem parcial (paginação)
-* Ausência de análise temporal (ainda)
-
----
-
-## 🔭 Próximos Passos
-
-* 📈 Análise temporal de crescimento de stars
-* 🧠 Modelos de distribuição (desigualdade)
-* 📦 Exportação de dados (CSV/Parquet)
-* 🌐 API própria para consumo externo
-
----
-
+```toml
+GITHUB_TOKEN = "seu_token_aqui"
+```
+## 🖼️ Interface
+![Navigation](assets/app/navigation.png)
+![Run](assets/app/run-command.png)
 ## 👤 Autor
-
 **Jhon Max Polins Ribeiro**
-
----
-
 ## 💡 Consideração Final
-
-Este projeto não oferece respostas definitivas.
-
-Ele propõe uma mudança de perspectiva:
-
-> **Visualizar dados não é compreender — é interpretar.**
+Este projeto não busca respostas definitivas.
+> **Ele propõe uma mudança de perspectiva sobre como interpretamos métricas.**

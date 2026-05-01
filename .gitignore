@@ -1,4 +1,4 @@
-.streamlit/
+```bash
 __pycache__/
 *.pyc
-.env
+.streamlit/secrets.toml
