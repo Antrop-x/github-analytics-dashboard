@@ -3,10 +3,12 @@ import time
 import logging
 from typing import List, Dict, Optional
 from .base_api import RepositoryApiClient
+from config.settings import settings
 
 logger = logging.getLogger(__name__)
-GITHUB_API_URL = "https://api.github.com/search/repositories"
-DEFAULT_TIMEOUT = 10
+GITHUB_API_URL = settings.GITHUB_API_URL
+DEFAULT_TIMEOUT = settings.GITHUB_API_TIMEOUT
+MAX_PAGES = 5
 
 
 class RateLimitError(RuntimeError):
@@ -23,11 +25,13 @@ def _make_request(params: Dict, headers: Optional[Dict] = None) -> Dict:
     """
     Executa requisição HTTP com tratamento básico de erro.
     """
+    request_headers = headers or {}
+    logger.debug(f"GitHub request: url={GITHUB_API_URL}, params={params}, headers={request_headers}")
     try:
         response = requests.get(
             GITHUB_API_URL,
             params=params,
-            headers=headers or {},
+            headers=request_headers,
             timeout=DEFAULT_TIMEOUT
         )
         if response.status_code == 403:
@@ -67,14 +71,19 @@ class GitHubApiClient(RepositoryApiClient):
     """
 
     def __init__(self, token: Optional[str] = None, per_page: int = 30):
-        self.token = token
+        self.token = token or settings.get_github_token()
         self.per_page = per_page
+        self.request_count = 0
 
     def _build_headers(self) -> Dict[str, str]:
-        headers = {}
-        if self.token:
-            headers["Authorization"] = f"token {self.token}"
-        return headers
+        if not self.token:
+            raise RuntimeError("GitHub API token is required for authenticated requests")
+
+        return {
+            "Accept": "application/vnd.github.v3+json",
+            "User-Agent": f"GitHubAnalyticsDashboard/1.0",
+            "Authorization": f"Bearer {self.token}"
+        }
 
     def fetch_repos(
         self,
@@ -91,6 +100,8 @@ class GitHubApiClient(RepositoryApiClient):
             "per_page": per_page,
             "page": page
         }
+        self.request_count += 1
+        logger.debug(f"fetch_repos call #{self.request_count}, query={query}, page={page}, per_page={per_page}")
         payload = _make_request(params, headers=headers or self._build_headers())
         return _normalize_items(payload.get("items", []))
 
@@ -101,7 +112,9 @@ class GitHubApiClient(RepositoryApiClient):
         sort: str = "stars",
         per_page: int = 30
     ) -> List[Dict]:
+        pages = min(pages, MAX_PAGES)
         results: List[Dict] = []
+        logger.debug(f"fetch_multiple_pages query={query}, pages={pages}, sort={sort}, per_page={per_page}")
         for page in range(1, pages + 1):
             try:
                 batch = self.fetch_repos(query, sort, per_page, page)

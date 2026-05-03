@@ -6,7 +6,7 @@ import pandas as pd
 from infrastructure.github_api import GitHubApiClient, RateLimitError
 from infrastructure.base_api import RepositoryApiClient
 from core.metrics import build_metrics, compute_hegemony_index, segment_repositories
-from models.models import validate_repository_df, to_repository_objects
+from models.domain import validate_repository_df, to_repository_objects
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")

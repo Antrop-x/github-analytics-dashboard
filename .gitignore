@@ -1,24 +1,60 @@
+# =====================
 # Ambiente virtual
-
+# =====================
+.venv/
 venv/
+env/
+ENV/
 
+# =====================
 # Python
+# =====================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
 
-**pycache**/
-*.pyc
+# =====================
+# Testes
+# =====================
+.pytest_cache/
+.coverage
+htmlcov/
 
+# =====================
 # Variáveis de ambiente
-
+# =====================
 .env
+.env.local
+.env.*.local
 
+# =====================
 # Streamlit
-
+# =====================
 .streamlit/secrets.toml
 
-# Dados 
-
+# =====================
+# Dados locais
+# =====================
 data/history.csv
 
-# Sistema
-
+# =====================
+# Sistema operacional
+# =====================
 .DS_Store
+Thumbs.db
+Desktop.ini
+
+# =====================
+# IDEs
+# =====================
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# =====================
+# Logs
+# =====================
+*.log
+logs/

@@ -1,0 +1,13 @@
+include README.md
+include requirements.txt
+include pytest.ini
+include Makefile
+include build.bat
+include build.ps1
+recursive-include data *.csv
+recursive-include assets *
+global-exclude *.pyc
+global-exclude __pycache__
+global-exclude .pytest_cache
+global-exclude .coverage
+global-exclude htmlcov
