@@ -1,4 +1,24 @@
-```bash
-__pycache__/
+# Ambiente virtual
+
+venv/
+
+# Python
+
+**pycache**/
 *.pyc
+
+# Variáveis de ambiente
+
+.env
+
+# Streamlit
+
 .streamlit/secrets.toml
+
+# Dados 
+
+data/history.csv
+
+# Sistema
+
+.DS_Store
