@@ -9,8 +9,8 @@ df = pd.DataFrame({
 })
 
 # Testar get_top_hegemonic_repo
-name, value = get_top_hegemonic_repo(df)
-print(f'Top hegemonic repo: {name} with value {value:.2f}')
+name, value, rank = get_top_hegemonic_repo(df)
+print(f'Top hegemonic repo: {name} with value {value:.2f} (rank: {rank})')
 
 # Testar compute_hegemony_index
 heg = compute_hegemony_index(df)

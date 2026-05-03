@@ -5,9 +5,8 @@ from functools import lru_cache
 import pandas as pd
 from infrastructure.github_api import GitHubApiClient, RateLimitError
 from infrastructure.base_api import RepositoryApiClient
-from core.metrics import build_metrics, compute_hegemony_index
+from core.metrics import build_metrics, compute_hegemony_index, segment_repositories
 from models.models import validate_repository_df, to_repository_objects
-from services.analysis_service import interpret_dataset
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -161,11 +160,9 @@ def ingest_repositories(
         logger.info("Nenhum dado retornado da API.")
         empty_df = pd.DataFrame()
         empty_heg = pd.DataFrame()
-        analysis = interpret_dataset(empty_df, empty_heg)
         return {
             "data": empty_df,
             "hegemony": empty_heg,
-            "analysis": analysis,
             "rate_limited": rate_limited,
             "records": 0
         }
@@ -176,11 +173,9 @@ def ingest_repositories(
     if not validate_repository_data(df):
         empty_df = pd.DataFrame()
         empty_heg = pd.DataFrame()
-        analysis = interpret_dataset(empty_df, empty_heg)
         return {
             "data": empty_df,
             "hegemony": empty_heg,
-            "analysis": analysis,
             "rate_limited": rate_limited,
             "status": status,
             "records": 0,
@@ -191,11 +186,9 @@ def ingest_repositories(
     if df.empty:
         logger.warning("DataFrame vazio após normalização")
         empty_heg = pd.DataFrame()
-        analysis = interpret_dataset(df, empty_heg)
         return {
             "data": df,
             "hegemony": empty_heg,
-            "analysis": analysis,
             "rate_limited": rate_limited,
             "status": status,
             "records": 0,
@@ -207,7 +200,6 @@ def ingest_repositories(
 
     df = enrich_repository_data(df)
     heg = compute_hegemony_index(df)
-    analysis = interpret_dataset(df, heg)
     
     if rate_limited:
         logger.warning(
@@ -218,14 +210,23 @@ def ingest_repositories(
             f"Ingestão concluída com sucesso: pages={pages}, records processados={len(df)}"
         )
     
+    import datetime
+    log_info = {
+        "timestamp": datetime.datetime.now().isoformat(),
+        "query": query,
+        "pages_collected": pages if not rate_limited else len(df) // 30,  # approx
+        "total_records": len(df),
+        "sort_by": sort
+    }
+    
     return {
         "data": df,
         "hegemony": heg,
-        "analysis": analysis,
         "rate_limited": rate_limited,
         "status": status,
         "records": len(df),
-        "requested_pages": pages
+        "requested_pages": pages,
+        "log": log_info
     }
 
 # ==============================
