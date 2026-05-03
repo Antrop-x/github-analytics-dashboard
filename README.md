@@ -1,9 +1,7 @@
-# 📊 README PROFISSIONAL (AJUSTADO À SUA ESTRUTURA)
-Pode substituir seu `README.md` por isso 👇
 # 📊 GitHub Analytics Dashboard
 > Análise crítica da distribuição de visibilidade no ecossistema de código aberto
 ## 🎥 Demonstração
-[![Assista ao vídeo](https://img.youtube.com/vi/SEU_VIDEO_ID/0.jpg)](https://www.youtube.com/watch?v=SEU_VIDEO_ID)
+[![Assista ao vídeo](https://img.youtube.com/vi/f3LHmchQ9II/0.jpg)](https://www.youtube.com/watch?v=f3LHmchQ9II)
 ## 🧠 Sobre o Projeto
 Este projeto apresenta um dashboard interativo desenvolvido com Python e Streamlit para análise de dados da API do GitHub.
 Diferente de abordagens tradicionais, o objetivo não é identificar “os melhores repositórios”, mas investigar:
