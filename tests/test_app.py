@@ -7,12 +7,28 @@ import pytest
 
 
 def test_app_imports():
-    """Test that the main app module imports without errors."""
+    """Test that the main app modules import without errors (excluding streamlit execution)."""
     try:
-        import app
-        assert True
+        # Test core imports that should work
+        from services.pipeline_service import PipelineService
+        from services.interpretation_service import InterpretationService
+        from services.storage_service import StorageService
+        from config.settings import Settings
+        from ui.ui import GitHubAnalyticsUI
+
+        # Test that we can create instances
+        settings = Settings()
+        pipeline = PipelineService(settings)
+        interpretation = InterpretationService()
+        storage = StorageService(settings)
+
+        assert pipeline is not None
+        assert interpretation is not None
+        assert storage is not None
+        assert settings is not None
+
     except Exception as e:
-        pytest.fail(f"App import failed: {str(e)}")
+        pytest.fail(f"Core app imports failed: {str(e)}")
 
 
 def test_core_imports():

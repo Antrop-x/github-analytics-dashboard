@@ -36,7 +36,8 @@ htmlcov/
 # =====================
 # Dados locais
 # =====================
-data/history.csv
+# data/ movido para storage layer - arquivos ignorados automaticamente
+# Dados reais devem ser externalizados do repositório
 
 # =====================
 # Sistema operacional

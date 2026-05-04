@@ -241,14 +241,43 @@ def ingest_fast(
     logger.debug(f"Ingestão rápida para query: {query}")
     return ingest_repositories(query=query, pages=1, sort=sort, use_cache=use_cache, api_client=api_client)
 
-# ==============================
-# HEALTH CHECK DO SERVIÇO
-# ==============================
 def check_service_health(api_client: Optional[RepositoryApiClient] = None) -> Dict[str, bool]:
     client = api_client or GitHubApiClient()
     return {
         "service_available": client.health_check()
     }
+
+
+class PipelineService:
+    """
+    Serviço de Pipeline - Coordena coleta e processamento de dados.
+    Isola lógica de pipeline da UI e interpretação.
+    """
+
+    def __init__(self, settings):
+        """
+        Inicializa o serviço de pipeline com configurações.
+
+        Args:
+            settings: Configurações da aplicação
+        """
+        self.settings = settings
+
+    def ingest_repositories(self, query: str = "language:python", pages: int = 2,
+                           sort: str = "stars", use_cache: bool = True) -> Dict:
+        """
+        Método principal de ingestão de repositórios.
+
+        Args:
+            query: Query de busca do GitHub
+            pages: Número de páginas a coletar
+            sort: Ordenação dos resultados
+            use_cache: Se deve usar cache
+
+        Returns:
+            Dicionário com dados coletados e metadados
+        """
+        return ingest_repositories(query=query, pages=pages, sort=sort, use_cache=use_cache)
 
 # ==============================
 # METADATA DO SERVIÇO

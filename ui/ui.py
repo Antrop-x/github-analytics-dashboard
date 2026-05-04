@@ -1,42 +1,29 @@
 ﻿import streamlit as st
 import pandas as pd
+from typing import Dict, Any, Union
 from core.metrics import get_top_hegemonic_repo
-from services.analysis_service import InterpretationResult
+from services.interpretation_service import AnalysisResult
+from models.ui_models import StorageInfo
 import plotly.graph_objects as go
 import plotly.express as px
 from core.metrics import top_concentration, analyze_segments
 
 
 def configure_page():
-    st.set_page_config(page_title="Observatório do Trabalho Digital", layout="wide")
+    """Configura página do Streamlit"""
+    st.set_page_config(
+        page_title="Observatório do Trabalho Digital",
+        page_icon="📊",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
 
 
 def apply_theme():
-    st.markdown("""
-    <style>
-        :root { --accent: #58a6ff; --bg-card: #0d1117; --border: #30363d; --text-dim: #8b949e; }
-        .critico-card {
-            background-color: var(--bg-card);
-            border: 1px solid var(--border);
-            padding: 1.5rem;
-            border-radius: 12px;
-            margin-bottom: 1rem;
-        }
-        .badge-status {
-            background-color: #238636;
-            color: white;
-            padding: 2px 10px;
-            border-radius: 10px;
-            font-size: 0.7rem;
-            font-weight: 700;
-        }
-        .section-title {
-            margin-top: 2rem;
-            font-size: 1.2rem;
-            font-weight: 700;
-        }
-    </style>
-    """, unsafe_allow_html=True)
+    """Aplica tema customizado à interface"""
+    from ui.theme import apply_theme as apply_theme_impl
+    apply_theme_impl()
+
 
 
 def get_mode_labels(mode: str) -> dict:
@@ -89,7 +76,7 @@ def render_header():
     st.caption("Interface de leitura da infraestrutura do GitHub como sistema de produção simbólica e material.")
 
 
-def render_overview(df: pd.DataFrame, mode: str, analysis: InterpretationResult, rate_limited: bool = False):
+def render_overview(df: pd.DataFrame, mode: str, analysis: AnalysisResult, rate_limited: bool = False):
     mode_labels = get_mode_labels(mode)
     
     st.markdown(f"## {mode_labels['title']}")
@@ -123,7 +110,7 @@ def render_overview(df: pd.DataFrame, mode: str, analysis: InterpretationResult,
 
     # Exibir análise interpretativa
     st.markdown("## 🧠 Interpretação Analítica")
-    st.info(analysis.summary)
+    st.info(analysis.interpretation['summary'])
     st.caption("⚠️ As interpretações são baseadas em heurísticas computacionais e não representam verdades absolutas.")
 
 
@@ -140,7 +127,17 @@ def render_hegemony(heg: pd.DataFrame):
     st.dataframe(heg, width="stretch")
 
 
-def render_reflexivity():
+def render_reflexivity(storage_info: Union[StorageInfo, Dict[str, Any]]):
+    """
+    Renderiza informações do storage layer de forma puramente passiva.
+
+    Args:
+        storage_info: Dados StorageInfo ou dict prontos para renderização
+    """
+    # Converter dict para StorageInfo se necessário (compatibilidade)
+    if isinstance(storage_info, dict):
+        storage_info = StorageInfo(**storage_info)
+    
     st.markdown("## ⚖️ Interpretação")
     st.info(
         "Stars representam visibilidade social; forks representam reuso técnico. "
@@ -151,8 +148,59 @@ def render_reflexivity():
         "Toda lógica reside em infrastructure, services e core."
     )
 
+    # Informações sobre storage
+    with st.expander("💾 Storage Layer"):
+        # Backend e diretório
+        st.write(f"**Backend:** {storage_info.backend}")
+        st.write(f"**Diretório:** `{storage_info.directory}`")
 
-def render_inequality_section(df: pd.DataFrame, analysis: InterpretationResult, debug_mode: bool = False):
+        # Status do modo mock
+        if storage_info.force_mock:
+            st.warning("🔧 Modo MOCK forçado - usando dados simulados")
+        elif storage_info.mock_fallback:
+            st.info("🔄 Usando dados mockados como fallback")
+
+        # Fontes disponíveis
+        with st.expander("📊 Fontes de Dados", expanded=False):
+            col1, col2 = st.columns(2)
+
+            with col1:
+                st.markdown("**Fontes Primárias:**")
+                if storage_info.sources:
+                    for source in storage_info.sources:
+                        st.write(f"• {source}")
+                else:
+                    st.write("*Nenhuma fonte primária*")
+
+            with col2:
+                st.markdown("**Fontes Mock:**")
+                if storage_info.mock_sources:
+                    for source in storage_info.mock_sources:
+                        st.write(f"• {source}")
+                else:
+                    st.write("*Nenhuma fonte mock*")
+
+        # Disponibilidade das fontes principais
+        st.markdown("**Disponibilidade:**")
+        availability = storage_info.availability or {}
+        if availability:
+            for name, available in availability.items():
+                status_icon = "✅" if available else "❌"
+                status_text = "Disponível" if available else "Indisponível"
+                st.write(f"{status_icon} **{name}**: {status_text}")
+        else:
+            st.write("*Sem informações de disponibilidade*")
+
+        # Métricas de saúde do storage com barra formatada corretamente
+        if storage_info.total_sources > 0:
+            health_percentage = storage_info.health_percentage
+            health_text = storage_info.health_text
+            st.progress(health_percentage / 100, text=health_text)
+
+
+
+
+def render_inequality_section(df: pd.DataFrame, analysis: AnalysisResult, debug_mode: bool = False):
     st.markdown("## 📈 Análise de Desigualdade")
     
     # Modo debug: mostrar distribuição bruta
@@ -166,45 +214,51 @@ def render_inequality_section(df: pd.DataFrame, analysis: InterpretationResult, 
     n_total = len(df)
     st.metric("Tamanho da Amostra (N)", n_total)
     
-    # Indicador de confiança
-    confidence_score = min(1, n_total / 100)
+    # Indicador de confiança baseado no contrato
+    confidence_score = analysis.confidence
     st.progress(confidence_score, text=f"Confiança Analítica: {confidence_score:.1%}")
     
-    # Alertas visuais
-    if n_total < 30:
+    # Alertas visuais baseados nos metadados
+    if analysis.metadata.get('sample_size', 0) < 30:
         st.warning("⚠️ Amostra pequena - Interpretações limitadas")
-    if "viés" in analysis.sampling_bias.lower() or "elitizado" in analysis.sampling_bias.lower():
+    if "viés" in analysis.interpretation.get('sampling_bias', '').lower() or "elitizado" in analysis.interpretation.get('sampling_bias', '').lower():
         st.warning("⚠️ Viés de coleta detectado")
     
     # N por segmento
-    if analysis.segment_analysis:
+    segment_analysis = analysis.interpretation.get('segment_analysis', {})
+    if segment_analysis:
         seg_cols = st.columns(3)
         with seg_cols[0]:
-            st.metric("N Low", analysis.segment_analysis.get("low_count", 0))
+            st.metric("N Low", segment_analysis.get("low_count", 0))
         with seg_cols[1]:
-            st.metric("N Mid", analysis.segment_analysis.get("mid_count", 0))
+            st.metric("N Mid", segment_analysis.get("mid_count", 0))
         with seg_cols[2]:
-            st.metric("N Top", analysis.segment_analysis.get("top_count", 0))
+            st.metric("N Top", segment_analysis.get("top_count", 0))
     
     # Métricas principais em linha
     col1, col2, col3 = st.columns(3)
     with col1:
-        if analysis.gini_coefficient is not None:
-            st.metric("Coeficiente de Gini", f"{analysis.gini_coefficient:.3f}")
+        gini = analysis.interpretation.get('gini_coefficient')
+        if gini is not None:
+            st.metric("Coeficiente de Gini", f"{gini:.3f}")
     with col2:
-        if analysis.top10_concentration is not None:
-            st.metric("Top 10% concentração", f"{analysis.top10_concentration:.2%}")
+        top10 = analysis.interpretation.get('top10_concentration')
+        if top10 is not None:
+            st.metric("Top 10% concentração", f"{top10:.2%}")
     with col3:
-        if analysis.domination_index is not None:
-            st.metric("Índice de Dominação", f"{analysis.domination_index:.3f}")
+        dom_index = analysis.interpretation.get('domination_index')
+        if dom_index is not None:
+            st.metric("Índice de Dominação", f"{dom_index:.3f}")
     
     # Classificações
-    if analysis.gini_coefficient is not None:
-        st.info(f"⚖️ Desigualdade: **{analysis.inequality_level}** | 🏛️ Dominação: **{analysis.domination_level}**")
+    inequality_level = analysis.interpretation.get('inequality_level', 'Indefinida')
+    domination_level = analysis.interpretation.get('domination_level', 'Indefinida')
+    if analysis.interpretation.get('gini_coefficient') is not None:
+        st.info(f"⚖️ Desigualdade: **{inequality_level}** | 🏛️ Dominação: **{domination_level}**")
     
     # Texto analítico
     st.markdown("### Interpretação")
-    st.info(analysis.summary)
+    st.info(analysis.interpretation['summary'])
     
     # Gráficos
     if not df.empty and "stars" in df.columns:
@@ -271,3 +325,79 @@ def plot_rank_decay(df: pd.DataFrame):
     )
 
     st.plotly_chart(fig, width="stretch")
+
+
+class GitHubAnalyticsUI:
+    """
+    Classe principal da UI - renderização pura, sem lógica de negócio.
+    
+    Recebe apenas AnalysisResult como contrato entre camadas.
+    Não interpreta, não calcula, não infere - apenas renderiza.
+    """
+    
+    def __init__(self, pipeline_service, interpretation_service, storage_service, settings):
+        """
+        Inicializa a UI com dependências injetadas.
+        
+        Args:
+            pipeline_service: Serviço de pipeline para coleta de dados
+            interpretation_service: Serviço de interpretação (não usado diretamente na UI)
+            storage_service: Serviço de armazenamento
+            settings: Configurações da aplicação
+        """
+        self.pipeline_service = pipeline_service
+        self.interpretation_service = interpretation_service
+        self.storage_service = storage_service
+        self.settings = settings
+    
+    def run(self):
+        """Executa a aplicação Streamlit."""
+        configure_page()
+        apply_theme()
+        
+        # Controles da sidebar
+        query, pages, sort, mode, debug_mode = sidebar_controls()
+        render_header()
+        
+        # Coletar dados via pipeline service
+        result = self.pipeline_service.ingest_repositories(
+            query=query, 
+            pages=pages, 
+            sort=sort, 
+            use_cache=True
+        )
+        df = result["data"]
+        heg = result["hegemony"]
+        rate_limited = result["rate_limited"]
+        
+        if df.empty:
+            render_empty("Sem dados disponíveis para este recorte.")
+            st.stop()
+        
+        # Calcular Gini (esta é a única "lógica" permitida na UI - cálculo básico)
+        from core.metrics import gini
+        gini_value = gini(df["stars"]) if not df.empty else None
+        
+        # Criar AnalysisResult via interpretation service
+        analysis = self.interpretation_service.create_analysis_result(df, heg, gini_value)
+        
+        # Renderizar usando apenas o contrato AnalysisResult
+        self._render_dashboard(df, mode, analysis, rate_limited, debug_mode)
+    
+    def _render_dashboard(self, df: pd.DataFrame, mode: str, analysis: AnalysisResult, 
+                         rate_limited: bool, debug_mode: bool):
+        """
+        Renderiza o dashboard completo usando apenas AnalysisResult.
+        
+        Args:
+            df: DataFrame com dados brutos (apenas para exibição)
+            mode: Modo de visualização
+            analysis: Contrato estruturado com métricas, interpretação e confiança
+            rate_limited: Flag de rate limit
+            debug_mode: Flag de modo debug
+        """
+        render_overview(df, mode, analysis, rate_limited)
+        render_data_table(df)
+        render_hegemony(heg)
+        render_inequality_section(df, analysis, debug_mode)
+        render_reflexivity(self.storage_service)
