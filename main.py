@@ -20,6 +20,7 @@ from config.settings import Settings
 from services.pipeline_service import PipelineService
 from services.interpretation_service import InterpretationService
 from services.storage_service import StorageService
+from services.storage_inspection_service import StorageInspectionService
 from ui.ui import GitHubAnalyticsUI
 
 
@@ -31,8 +32,8 @@ def main():
 
         # Configurar logging
         logging.basicConfig(
-            level=getattr(logging, settings.log_level.upper()),
-            format=settings.log_format
+            level=getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO),
+            format=settings.LOG_FORMAT
         )
 
         logger = logging.getLogger(__name__)
@@ -42,12 +43,14 @@ def main():
         pipeline_service = PipelineService(settings)
         interpretation_service = InterpretationService()
         storage_service = StorageService(settings)
+        storage_inspection_service = StorageInspectionService(storage_service)
 
         # Iniciar UI
         ui = GitHubAnalyticsUI(
             pipeline_service=pipeline_service,
             interpretation_service=interpretation_service,
             storage_service=storage_service,
+            storage_inspection_service=storage_inspection_service,
             settings=settings
         )
 

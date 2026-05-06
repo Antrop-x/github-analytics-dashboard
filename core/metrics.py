@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Optional
 import pandas as pd
 import numpy as np
 # ==============================

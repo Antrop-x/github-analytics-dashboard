@@ -15,11 +15,26 @@ __pycache__/
 *.pyd
 
 # =====================
+# Build / Distribuição
+# =====================
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# =====================
 # Testes
 # =====================
 .pytest_cache/
 .coverage
 htmlcov/
+
+# =====================
+# Type check / lint
+# =====================
+.mypy_cache/
+.ruff_cache/
+.pyre/
 
 # =====================
 # Variáveis de ambiente
@@ -29,15 +44,23 @@ htmlcov/
 .env.*.local
 
 # =====================
+# Segurança
+# =====================
+*.pem
+*.key
+*.crt
+
+# =====================
 # Streamlit
 # =====================
 .streamlit/secrets.toml
 
 # =====================
-# Dados locais
+# Dados locais / storage
 # =====================
-# data/ movido para storage layer - arquivos ignorados automaticamente
-# Dados reais devem ser externalizados do repositório
+storage/
+data/*.csv
+data/*.db
 
 # =====================
 # Sistema operacional
@@ -49,7 +72,7 @@ Desktop.ini
 # =====================
 # IDEs
 # =====================
-.vscode/settings.json
+.vscode/
 .idea/
 *.swp
 *.swo

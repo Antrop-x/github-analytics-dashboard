@@ -26,6 +26,7 @@ setup(
     long_description_content_type="text/markdown",
     url="https://github.com/your-org/github-analytics-dashboard",
     packages=find_packages(exclude=["tests*", "docs*"]),
+    py_modules=["app", "cli"],
     classifiers=[
         "Development Status :: 4 - Beta",
         "Intended Audience :: Developers",
@@ -57,7 +58,7 @@ setup(
     },
     entry_points={
         "console_scripts": [
-            "github-analytics=app:main",
+            "github-analytics=cli:main",
         ],
     },
     include_package_data=True,

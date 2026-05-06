@@ -40,9 +40,7 @@ from ui.sections import (
 )
 
 from ui.layout import (
-    render_main_layout,
     render_empty_state,
-    configure_page,
 )
 
 __all__ = [
@@ -75,9 +73,9 @@ __all__ = [
     "render_overview_section",
     "render_data_table_section",
     "render_hegemony_section",
+    "render_inequality_section",
     "render_storage_section",
     "render_footer_section",
     # layout.py
-    "render_main_layout",
     "render_empty_state",
 ]

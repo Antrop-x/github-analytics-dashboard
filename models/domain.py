@@ -1,5 +1,6 @@
 from dataclasses import dataclass, asdict
 from typing import List
+import logging
 import pandas as pd
 
 REPOSITORY_SCHEMA_COLUMNS = {
@@ -29,22 +30,43 @@ class RepositorySchema:
 # ==============================
 def validate_repository_df(df: pd.DataFrame) -> bool:
     """
-    Valida se o DataFrame respeita o contrato mínimo esperado.
+    Valida e limpa o DataFrame do repositório de forma relaxada.
     """
+    logger = logging.getLogger(__name__)
+
     if df is None or df.empty:
+        logger.warning("validate_repository_df: DataFrame é None ou vazio")
         return False
 
-    required_columns = {"name", "stars", "forks"}
-    if not required_columns.issubset(set(df.columns)):
-        return False
+    before = len(df)
+    if "name" not in df.columns:
+        df["name"] = None
+    if "url" not in df.columns:
+        df["url"] = None
 
-    if df["name"].isnull().any():
-        return False
+    df.dropna(subset=["name", "url"], inplace=True)
+    after = len(df)
+    logger.warning(f"Linhas antes: {before}")
+    logger.warning(f"Linhas depois: {after}")
+
+    invalid = df[df["name"].isna() | df["url"].isna()]
+    if not invalid.empty:
+        logger.warning(f"Exemplo inválido:\n{invalid.head()}")
+
+    if "stars" not in df.columns and "stargazers_count" in df.columns:
+        df["stars"] = df["stargazers_count"]
+    if "forks" not in df.columns and "forks_count" in df.columns:
+        df["forks"] = df["forks_count"]
+
+    df["stars"] = pd.to_numeric(df.get("stars", 0), errors="coerce").fillna(0)
+    df["forks"] = pd.to_numeric(df.get("forks", 0), errors="coerce").fillna(0)
 
     if not pd.api.types.is_numeric_dtype(df["stars"]):
+        logger.warning("validate_repository_df: stars não é numérico")
         return False
 
     if not pd.api.types.is_numeric_dtype(df["forks"]):
+        logger.warning("validate_repository_df: forks não é numérico")
         return False
 
     return True
@@ -53,15 +75,50 @@ def validate_repository_df(df: pd.DataFrame) -> bool:
 # ==============================
 def enforce_schema(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Garante coerência estrutural dos dados antes de entrar no /core.
+    Rede de segurança: garante que colunas essenciais existam.
+    Mapeia variantes de nomes de campos (ex: stargazers_count -> stars).
+    
+    Se o mapper da infraestrutura falhar, recria colunas a partir de variantes.
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
     if df is None or df.empty:
         return pd.DataFrame()
 
     result = df.copy()
-    result["name"] = result["name"].fillna("unknown").astype(str)
-    result["stars"] = result["stars"].fillna(0).astype(int)
-    result["forks"] = result["forks"].fillna(0).astype(int)
+    
+    # Mapear campos alternativos se coluna padrão não existe
+    field_mappings = {
+        "name": ["full_name", "name"],
+        "stars": ["stargazers_count", "stars"],
+        "forks": ["forks_count", "forks"],
+        "url": ["html_url", "url"],
+    }
+    
+    for target_col, source_cols in field_mappings.items():
+        if target_col not in result.columns:
+            # Procurar por coluna alternativa
+            found = False
+            for source_col in source_cols:
+                if source_col in result.columns:
+                    result[target_col] = result[source_col]
+                    logger.debug(f"enforce_schema: mapeado '{source_col}' -> '{target_col}'")
+                    found = True
+                    break
+            
+            if not found:
+                # Nenhuma coluna fonte encontrada, usar padrão
+                if target_col in ["stars", "forks"]:
+                    result[target_col] = 0
+                else:
+                    result[target_col] = ""
+                logger.warning(f"enforce_schema: '{target_col}' criada com valor padrão")
+    
+    # Garantir tipos corretos
+    result["name"] = result.get("name", "").fillna("unknown").astype(str)
+    result["stars"] = pd.to_numeric(result.get("stars", 0), errors="coerce").fillna(0).astype(int)
+    result["forks"] = pd.to_numeric(result.get("forks", 0), errors="coerce").fillna(0).astype(int)
 
     if "description" not in result.columns:
         result["description"] = ""

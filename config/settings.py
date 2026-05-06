@@ -30,9 +30,17 @@ class Settings:
     APP_TITLE = os.getenv("APP_TITLE", "GitHub Analytics Dashboard")
     APP_VERSION = os.getenv("APP_VERSION", "1.0.0")
 
-    # Application Configuration
-    APP_TITLE = os.getenv("APP_TITLE", "GitHub Analytics Dashboard")
-    APP_VERSION = os.getenv("APP_VERSION", "1.0.0")
+    def __init__(self) -> None:
+        self.log_level = self.LOG_LEVEL
+        self.log_format = self.LOG_FORMAT
+        self.github_api_url = self.GITHUB_API_URL
+        self.github_api_timeout = self.GITHUB_API_TIMEOUT
+        self.github_api_per_page = self.GITHUB_API_PER_PAGE
+        self.github_token = self.GITHUB_TOKEN
+        self.app_title = self.APP_TITLE
+        self.app_version = self.APP_VERSION
+        self.default_data_file = self.DEFAULT_DATA_FILE
+        self.history_data_file = self.HISTORY_DATA_FILE
 
     # Data Configuration
     DEFAULT_DATA_FILE = DATA_DIR / "example_history.csv"

@@ -1,143 +1,190 @@
 import time
 import logging
-from typing import List, Dict, Optional, Callable
-from functools import lru_cache
+from typing import List, Dict, Optional, Callable, Tuple
+from functools import wraps
 import pandas as pd
 from infrastructure.github_api import GitHubApiClient, RateLimitError
 from infrastructure.base_api import RepositoryApiClient
 from core.metrics import build_metrics, compute_hegemony_index, segment_repositories
-from models.domain import validate_repository_df, to_repository_objects
+from models.domain import validate_repository_df, enforce_schema, to_repository_objects
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 # ==============================
-# CACHE LAYER (IN-MEMORY)
+# CACHE COM TTL (TIME-TO-LIVE)
 # ==============================
-@lru_cache(maxsize=64)
-def _cached_fetch(query: str, pages: int, sort: str, client_name: str) -> List[Dict]:
-    logger.debug(f"Cache hit para query: {query}, pages: {pages}, sort: {sort}")
-    client = GitHubApiClient() if client_name == "GitHubApiClient" else GitHubApiClient()
-    return client.fetch_multiple_pages(query=query, pages=pages, sort=sort)
 
-# ==============================
-# RATE LIMIT HANDLING
-# ==============================
-class RateLimitHandler:
+class CacheEntry:
+    """Entry de cache com TTL para evitar dados stale."""
+    def __init__(self, value: Tuple[List[Dict], bool], ttl_seconds: int = 300):
+        self.value = value
+        self.created_at = time.time()
+        self.ttl_seconds = ttl_seconds
+    
+    def is_expired(self) -> bool:
+        return (time.time() - self.created_at) > self.ttl_seconds
+    
+    def get(self) -> Optional[Tuple[List[Dict], bool]]:
+        if self.is_expired():
+            logger.debug("Cache expirado (TTL).")
+            return None
+        return self.value
+
+
+# Cache global com TTL
+_fetch_cache: Dict[str, CacheEntry] = {}
+
+# Singleton de client para evitar recriar a cada chamada
+_github_client: Optional[GitHubApiClient] = None
+
+
+def _get_client() -> GitHubApiClient:
+    """Retorna ou cria um cliente singleton do GitHub."""
+    global _github_client
+    if _github_client is None:
+        _github_client = GitHubApiClient()
+    return _github_client
+
+
+def _make_cache_key(query: str, pages: int, sort: str) -> str:
+    """Gera chave de cache a partir dos parâmetros."""
+    return f"{query}:{pages}:{sort}"
+
+
+def _cached_fetch(query: str, pages: int, sort: str) -> Tuple[List[Dict], bool]:
     """
-    Gerencia controle de rate limit com intervalo mínimo entre chamadas.
+    Busca com cache com TTL. Retorna (dados, rate_limited).
+    Cache expira em 5 minutos ou se houver rate limit.
     """
-
-    def __init__(self, min_interval: float = 1.2):
-        self.last_call_time = 0.0
-        self.min_interval = min_interval
-
-    def wait_if_needed(self) -> None:
-        elapsed = time.time() - self.last_call_time
-        if elapsed < self.min_interval:
-            logger.debug(f"Aguardando {self.min_interval - elapsed:.2f}s por rate limit")
-            time.sleep(self.min_interval - elapsed)
-        self.last_call_time = time.time()
-
-
-rate_limiter = RateLimitHandler()
-
-# ==============================
-# RATE LIMIT RESPONSE HANDLER
-# ==============================
-def handle_rate_limit(response) -> bool:
-    """
-    Detecta e aguarda rate limit da API GitHub.
-    Retorna True se rate limit foi detectado e tratado.
-    """
-    if hasattr(response, 'status_code') and response.status_code == 403:
-        reset_time = int(response.headers.get("X-RateLimit-Reset", 0))
-        sleep_time = max(reset_time - time.time(), 0)
-        logger.warning(f"Rate limit detectado. Aguardando {sleep_time:.0f}s para reset")
-        if sleep_time > 0:
-            time.sleep(sleep_time)
-        return True
-    return False
-
-# ==============================
-# RETRY POLICY
-# ==============================
-def retry_with_backoff(func: Callable[[], List[Dict]], retries: int = 3, base_delay: float = 2.0) -> tuple[List[Dict], bool]:
-    """
-    Executa função com retry exponencial e retorna se houve rate limit.
-    """
-    rate_limited = False
-    for attempt in range(retries):
-        try:
-            logger.debug(f"Tentativa {attempt + 1} de {retries}")
-            return func(), rate_limited
-        except RateLimitError as e:
-            rate_limited = True
-            logger.warning(f"Tentativa {attempt + 1} interrompida por rate limit")
-            if handle_rate_limit(e.response):
-                if attempt < retries - 1:
-                    delay = base_delay * (2 ** attempt)
-                    logger.info(f"Retrying em {delay:.2f}s após rate limit")
-                    time.sleep(delay)
-                    continue
-            logger.error("Rate limit persistente após tratamento")
-            return e.partial_results, rate_limited
-        except Exception as e:
-            logger.warning(f"Tentativa {attempt + 1} falhou: {e}")
-            if attempt < retries - 1:
-                delay = base_delay * (2 ** attempt)
-                logger.info(f"Retrying em {delay:.2f}s")
-                time.sleep(delay)
-            else:
-                logger.error(f"Falha após {retries} tentativas: {e}")
-                raise
-    return [], rate_limited
+    cache_key = _make_cache_key(query, pages, sort)
+    
+    # Verificar cache válido
+    if cache_key in _fetch_cache:
+        cached = _fetch_cache[cache_key].get()
+        if cached is not None:
+            logger.debug(f"Cache HIT para query={query}, pages={pages}")
+            return cached
+    
+    logger.debug(f"Cache MISS para query={query}, pages={pages}. Buscando da API...")
+    
+    # Buscar da API (sem retry aqui, retry está na infraestrutura)
+    client = _get_client()
+    logger.debug(f"Iniciando fetch_multiple_pages: query={query}, pages={pages}, sort={sort}")
+    result = client.fetch_multiple_pages(query=query, pages=pages, sort=sort)
+    items = result.get("items", [])
+    logger.debug(f"Resultado da API: status={result.get('status')}, items={len(items)}, rate_limited={result.get('status') == 'rate_limited'}")
+    
+    rate_limited = result.get("status") == "rate_limited"
+    normalized_items = items
+    if items:
+        df = pd.DataFrame(items)
+        df = enforce_schema(df)
+        df["stars"] = pd.to_numeric(df["stars"], errors="coerce").fillna(0).astype(int)
+        df["forks"] = pd.to_numeric(df["forks"], errors="coerce").fillna(0).astype(int)
+        if validate_repository_data(df):
+            normalized_items = df.to_dict("records")
+            cache_entry = CacheEntry((normalized_items, rate_limited), ttl_seconds=300)
+            _fetch_cache[cache_key] = cache_entry
+            logger.debug(f"Dados válidos cacheados: {len(normalized_items)} itens")
+        else:
+            logger.warning("Dados não validados, não armazenando cache.")
+    else:
+        logger.warning("Nenhum item retornado para cachear.")
+    
+    return normalized_items, rate_limited
 
 
 # ==============================
-# FETCH RAW DATA
+# VALIDAÇÃO E NORMALIZAÇÃO
 # ==============================
-def fetch_raw_data(
-    query: str = "language:python",
-    pages: int = 2,
-    sort: str = "stars",
-    api_client: Optional[RepositoryApiClient] = None,
-    use_cache: bool = True
-) -> tuple[List[Dict], bool]:
-    client = api_client or GitHubApiClient()
-    if use_cache:
-        return _cached_fetch(query, pages, sort, client.__class__.__name__), False
-    return retry_with_backoff(lambda: client.fetch_multiple_pages(query=query, pages=pages, sort=sort))
+
 
 
 # ==============================
 # NORMALIZAÇÃO E VALIDAÇÃO DE DADOS
 # ==============================
 def validate_repository_data(df: pd.DataFrame) -> bool:
-    if not validate_repository_df(df):
-        logger.warning("Dados inválidos recebidos da API.")
+    logger.debug(f"validate_repository_data: df.shape={df.shape}, columns={list(df.columns)}")
+    
+    if df is None or df.empty:
+        logger.warning("validate_repository_data: DataFrame é None ou vazio")
         return False
-    return True
+    
+    # Log de inspeção
+    logger.debug(f"validate_repository_data: primeiras 3 linhas: {df.head(3).to_dict()}")
+    logger.debug(f"validate_repository_data: tipos: {df.dtypes.to_dict()}")
+    
+    valid = validate_repository_df(df)
+    if not valid:
+        logger.warning("Dados inválidos recebidos da API.")
+    return valid
 
 
-def ensure_pipeline_safety(df: pd.DataFrame) -> pd.DataFrame:
+def clean_repository_data(df: pd.DataFrame) -> pd.DataFrame:
+    logger.info(f"Total bruto recebido: {len(df)}")
+    logger.info(f"DataFrame inicial: {df.shape}")
+    logger.info(f"Colunas: {df.columns.tolist()}")
+
+    df = enforce_schema(df)
+    df["stars"] = pd.to_numeric(df["stars"], errors="coerce").fillna(0).astype(int)
+    df["forks"] = pd.to_numeric(df["forks"], errors="coerce").fillna(0).astype(int)
+
+    invalid = df[df["name"].isna() | df["url"].isna()]
+    if not invalid.empty:
+        logger.warning(f"Exemplo inválido:\n{invalid.head()}")
+
+    before = len(df)
+    df = df.dropna(subset=["name", "url"])
+    after = len(df)
+    logger.warning(f"Linhas antes: {before}")
+    logger.warning(f"Linhas depois: {after}")
+
+    return df
+
+
+def ensure_pipeline_safety(df: pd.DataFrame, allow_empty: bool = False) -> pd.DataFrame:
     """
-    Verifica se o DataFrame não é None e não está vazio, lançando exceções claras.
+    Valida DataFrame degradando graciosamente.
+    
+    Args:
+        df: DataFrame para validar
+        allow_empty: Se True, permite DataFrame vazio (degrada graciosamente)
+                    Se False, lança erro (comportamento original)
+    
+    Returns:
+        DataFrame validado
+        
+    Raises:
+        ValueError: Se None ou (vazio e allow_empty=False)
     """
     if df is None:
-        raise ValueError("DataFrame não pode ser None. Verifique a entrada de dados.")
+        logger.error("DataFrame é None. Verifique a entrada de dados.")
+        raise ValueError("DataFrame não pode ser None.")
+    
     if df.empty:
-        raise ValueError("DataFrame não pode estar vazio. Nenhum dado foi processado.")
+        if allow_empty:
+            logger.warning("DataFrame vazio. Pipeline degradando graciosamente.")
+            return df
+        else:
+            logger.error("DataFrame vazio. Nenhum dado foi processado.")
+            raise ValueError("DataFrame vazio.")
+    
     return df
 
 
 def normalize_repository_data(df: pd.DataFrame) -> pd.DataFrame:
-    return ensure_pipeline_safety(df)
+    """Normaliza dados de repositório. Permite vazio para degradação graciosa."""
+    return ensure_pipeline_safety(df, allow_empty=True)
 
 
 def enrich_repository_data(df: pd.DataFrame) -> pd.DataFrame:
+    """Enriquece dados com métricas. Permite vazio para degradação graciosa."""
+    if df.empty:
+        logger.warning("DataFrame vazio. Pulando enriquecimento.")
+        return df
     df = build_metrics(df)
-    return ensure_pipeline_safety(df)
+    return ensure_pipeline_safety(df, allow_empty=True)
 
 # ==============================
 # INGESTÃO PRINCIPAL
@@ -149,85 +196,209 @@ def ingest_repositories(
     use_cache: bool = True,
     api_client: Optional[RepositoryApiClient] = None
 ) -> Dict:
-    logger.info(f"Iniciando ingestão: query='{query}', pages={pages}, sort='{sort}', cache={use_cache}")
-    rate_limiter.wait_if_needed()
+    """
+    Orquestra coleta e processamento de repositórios.
     
-    raw_data, rate_limited = fetch_raw_data(query, pages, sort, api_client=api_client, use_cache=use_cache)
-
-    status = "partial" if rate_limited else "success"
-
-    if not raw_data:
-        logger.info("Nenhum dado retornado da API.")
-        empty_df = pd.DataFrame()
-        empty_heg = pd.DataFrame()
-        return {
-            "data": empty_df,
-            "hegemony": empty_heg,
-            "rate_limited": rate_limited,
-            "records": 0
-        }
-
-    df = pd.DataFrame(raw_data)
-    logger.debug(f"Dados brutos recebidos: {len(df)} registros")
-
-    if not validate_repository_data(df):
-        empty_df = pd.DataFrame()
-        empty_heg = pd.DataFrame()
-        return {
-            "data": empty_df,
-            "hegemony": empty_heg,
-            "rate_limited": rate_limited,
-            "status": status,
-            "records": 0,
-            "requested_pages": pages
-        }
-
-    df = normalize_repository_data(df)
-    if df.empty:
-        logger.warning("DataFrame vazio após normalização")
-        empty_heg = pd.DataFrame()
+    Fluxo:
+    1. Busca da API (com retry automático na infraestrutura)
+    2. Validação básica
+    3. Normalização
+    4. Enriquecimento (métricas)
+    5. Retorna dados ou degrada graciosamente
+    
+    Returns:
+        Dict com chaves:
+        - data: DataFrame com repositórios
+        - hegemony: DataFrame com índice de hegemonia
+        - rate_limited: bool indicando rate limit
+        - status: "success" ou "partial"
+        - records: número de registros processados
+        - requested_pages: páginas solicitadas
+        - log: dict com metadados
+    """
+    import datetime
+    
+    start_time = time.time()
+    logger.info(f"Iniciando ingestão: query='{query}', pages={pages}, sort='{sort}', cache={use_cache}")
+    
+    try:
+        # Buscar dados (retry está na infraestrutura agora)
+        raw_data, rate_limited = _cached_fetch(query, pages, sort)
+        fetch_time = time.time() - start_time
+        logger.info(f"Busca completada em {fetch_time:.2f}s. Coletados {len(raw_data)} registros.")
+        
+        if not raw_data:
+            logger.warning("Nenhum dado retornado da API.")
+            return {
+                "data": pd.DataFrame(),
+                "hegemony": pd.DataFrame(),
+                "rate_limited": rate_limited,
+                "status": "no_data",
+                "records": 0,
+                "requested_pages": pages,
+                "log": {
+                    "timestamp": datetime.datetime.now().isoformat(),
+                    "query": query,
+                    "total_time": fetch_time,
+                    "total_records": 0,
+                    "sort_by": sort
+                }
+            }
+        
+        # Criar DataFrame
+        df = pd.DataFrame(raw_data)
+        logger.info(f"Total bruto recebido: {len(raw_data)}")
+        logger.info(f"DataFrame inicial: {df.shape}")
+        logger.info(f"Colunas: {df.columns.tolist()}")
+        logger.debug(f"DataFrame criado com {len(df)} linhas e {len(df.columns)} colunas")
+        
+        # Limpeza relaxada de dados sujos
+        if not validate_repository_data(df):
+            logger.warning("Dados brutos contém problemas; aplicando limpeza relaxada.")
+        df = clean_repository_data(df)
+        if df.empty:
+            logger.warning("DataFrame vazio após limpeza. Retornando vazio.")
+            return {
+                "data": df,
+                "hegemony": pd.DataFrame(),
+                "rate_limited": rate_limited,
+                "status": "empty_after_clean",
+                "records": 0,
+                "requested_pages": pages,
+                "log": {
+                    "timestamp": datetime.datetime.now().isoformat(),
+                    "query": query,
+                    "total_time": time.time() - start_time,
+                    "total_records": 0,
+                    "sort_by": sort
+                }
+            }
+        
+        # Normalizar (permitindo vazio para degradação graciosa)
+        df = normalize_repository_data(df)
+        
+        if df.empty:
+            logger.warning("DataFrame vazio após normalização. Retornando vazio.")
+            return {
+                "data": df,
+                "hegemony": pd.DataFrame(),
+                "rate_limited": rate_limited,
+                "status": "empty_after_norm",
+                "records": 0,
+                "requested_pages": pages,
+                "log": {
+                    "timestamp": datetime.datetime.now().isoformat(),
+                    "query": query,
+                    "total_time": time.time() - start_time,
+                    "total_records": 0,
+                    "sort_by": sort
+                }
+            }
+        
+        # Converter para objetos do domínio
+        repository_objects = to_repository_objects(df)
+        logger.debug(f"Convertidos {len(repository_objects)} repositórios usando contrato de dados")
+        
+        # Enriquecer com métricas
+        enrich_start = time.time()
+        df = enrich_repository_data(df)
+        heg = compute_hegemony_index(df)
+        enrich_time = time.time() - enrich_start
+        logger.debug(f"Enriquecimento concluído em {enrich_time:.2f}s")
+        
+        status = "partial" if rate_limited else "success"
+        total_time = time.time() - start_time
+        
+        if rate_limited:
+            logger.warning(
+                f"Ingestão parcial: rate_limited=True, pages={pages}, "
+                f"registros_coletados={len(df)}, tempo_total={total_time:.2f}s"
+            )
+        else:
+            logger.info(
+                f"Ingestão bem-sucedida: pages={pages}, registros={len(df)}, "
+                f"tempo_total={total_time:.2f}s"
+            )
+        
         return {
             "data": df,
-            "hegemony": empty_heg,
+            "hegemony": heg,
             "rate_limited": rate_limited,
             "status": status,
-            "records": 0,
-            "requested_pages": pages
+            "records": len(df),
+            "requested_pages": pages,
+            "log": {
+                "timestamp": datetime.datetime.now().isoformat(),
+                "query": query,
+                "pages_collected": pages if not rate_limited else len(df) // 30,  # approx
+                "total_records": len(df),
+                "sort_by": sort,
+                "total_time": total_time,
+                "fetch_time": fetch_time,
+                "enrich_time": enrich_time
+            }
         }
-
-    repository_objects = to_repository_objects(df)
-    logger.debug(f"Convertidos {len(repository_objects)} repositórios usando contrato de dados")
-
-    df = enrich_repository_data(df)
-    heg = compute_hegemony_index(df)
-    
-    if rate_limited:
-        logger.warning(
-            f"Ingestão parcial devido a rate limit: pages={pages}, records coletados={len(df)}"
-        )
-    else:
-        logger.info(
-            f"Ingestão concluída com sucesso: pages={pages}, records processados={len(df)}"
-        )
-    
-    import datetime
-    log_info = {
-        "timestamp": datetime.datetime.now().isoformat(),
-        "query": query,
-        "pages_collected": pages if not rate_limited else len(df) // 30,  # approx
-        "total_records": len(df),
-        "sort_by": sort
-    }
-    
-    return {
-        "data": df,
-        "hegemony": heg,
-        "rate_limited": rate_limited,
-        "status": status,
-        "records": len(df),
-        "requested_pages": pages,
-        "log": log_info
-    }
+        
+    except RateLimitError as e:
+        logger.warning(f"Rate limit na busca. Retornando {len(e.partial_results)} registros parciais.")
+        if e.partial_results:
+            df = pd.DataFrame(e.partial_results)
+            if not df.empty and validate_repository_data(df):
+                df = normalize_repository_data(df)
+                df = enrich_repository_data(df) if not df.empty else df
+                heg = compute_hegemony_index(df) if not df.empty else pd.DataFrame()
+                return {
+                    "data": df,
+                    "hegemony": heg,
+                    "rate_limited": True,
+                    "status": "partial",
+                    "records": len(df),
+                    "requested_pages": pages,
+                    "log": {
+                        "timestamp": datetime.datetime.now().isoformat(),
+                        "query": query,
+                        "total_time": time.time() - start_time,
+                        "total_records": len(df),
+                        "sort_by": sort,
+                        "error": "rate_limit"
+                    }
+                }
+        
+        return {
+            "data": pd.DataFrame(),
+            "hegemony": pd.DataFrame(),
+            "rate_limited": True,
+            "status": "rate_limited",
+            "records": 0,
+            "requested_pages": pages,
+            "log": {
+                "timestamp": datetime.datetime.now().isoformat(),
+                "query": query,
+                "total_time": time.time() - start_time,
+                "total_records": 0,
+                "sort_by": sort,
+                "error": "rate_limit"
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Erro fatal na ingestão: {type(e).__name__}: {e}", exc_info=True)
+        return {
+            "data": pd.DataFrame(),
+            "hegemony": pd.DataFrame(),
+            "rate_limited": False,
+            "status": "error",
+            "records": 0,
+            "requested_pages": pages,
+            "log": {
+                "timestamp": datetime.datetime.now().isoformat(),
+                "query": query,
+                "total_time": time.time() - start_time,
+                "total_records": 0,
+                "sort_by": sort,
+                "error": str(e)
+            }
+        }
 
 # ==============================
 # INGESTÃO OTIMIZADA (FAST PATH)
@@ -242,7 +413,8 @@ def ingest_fast(
     return ingest_repositories(query=query, pages=1, sort=sort, use_cache=use_cache, api_client=api_client)
 
 def check_service_health(api_client: Optional[RepositoryApiClient] = None) -> Dict[str, bool]:
-    client = api_client or GitHubApiClient()
+    """Verifica saúde do serviço de API."""
+    client = api_client or _get_client()
     return {
         "service_available": client.health_check()
     }

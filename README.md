@@ -44,6 +44,36 @@ Infrastructure → Services → UI
 - **Services**: Lógica de negócio, processamento de dados
 - **UI**: Interface puramente renderizadora (Pure Rendering Pattern)
 
+## 🧠 Consistência de Entrypoints
+
+O projeto atualmente expõe três caminhos de execução diferentes:
+
+- `streamlit run app.py` — execução via Streamlit
+- `python dev.py run` — wrapper de desenvolvimento
+- `github-analytics` — CLI registrado via `setup.py`
+
+Esses caminhos não estão totalmente alinhados, o que gera:
+
+- duplicação de responsabilidade
+- dificuldade de evolução
+- risco de comportamento divergente
+
+### Problemas detectados
+
+- **Falta de fonte única de verdade**: cada entrypoint sugere um modelo mental diferente.
+- **Violação de coesão**: `app.py` acumula interface Streamlit e ponto de entrada CLI.
+- **Acoplamento implícito**: o CLI aponta para `app:main`, mas a execução real depende de `streamlit run app.py`.
+- **Ambiguidade operacional**: desenvolvedores não sabem qual comando usar.
+- **Fragilidade em automação**: CI/CD precisa escolher entre caminhos inconsistentes.
+- **Incompatibilidade com deploy cloud**: plataformas como Streamlit Cloud esperam `streamlit run <arquivo>`.
+- **Distribuição enganosa**: `setup.py` registra um CLI que não representa o fluxo real de execução.
+- **Cobertura de testes fragmentada**: o pipeline real fica difícil de validar de ponta a ponta.
+- **Carga cognitiva aumentada**: contribuidores precisam entender três formas distintas de rodar o projeto.
+
+### Recomendação
+
+Definir uma única fonte de execução oficial e manter as demais rotas como auxiliares. O fluxo principal deve ser `streamlit run app.py`; `python dev.py run` deve ficar restrito a tarefas de desenvolvimento; o CLI instalado (`github-analytics`) agora é um wrapper que executa o mesmo fluxo Streamlit de forma consistente.
+
 ## 📦 Estrutura do Projeto
 
 ```
@@ -164,6 +194,10 @@ export GITHUB_TOKEN=your_token_here
 ```bash
 streamlit run app.py
 ```
+
+### Alternativas de execução
+- `python dev.py run` — wrapper de desenvolvimento que também inicia o Streamlit app
+- `github-analytics` — CLI instalado via `pip install .` que executa o mesmo app Streamlit
 
 ## 📌 Relatório Geral
 

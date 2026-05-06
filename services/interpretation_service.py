@@ -252,7 +252,18 @@ class InterpretationService:
 
         # Segmentação e análise de viés
         df_segmented = segment_repositories(df_metrics, col="stars")
-        segment_analysis = analyze_segments(df_segmented)
+        segment_analysis_raw = analyze_segments(df_segmented)
+        
+        # Converter para formato flat esperado pela UI
+        segment_analysis = {
+            "low_count": segment_analysis_raw.get("low", {}).get("count", 0),
+            "mid_count": segment_analysis_raw.get("mid", {}).get("count", 0),
+            "top_count": segment_analysis_raw.get("top", {}).get("count", 0),
+            "low_percentage": segment_analysis_raw.get("low", {}).get("percentage", 0.0),
+            "mid_percentage": segment_analysis_raw.get("mid", {}).get("percentage", 0.0),
+            "top_percentage": segment_analysis_raw.get("top", {}).get("percentage", 0.0)
+        }
+        
         sampling_bias = self._interpret_sampling_bias(df_segmented)
 
         # Criação do resultado preliminar
@@ -364,6 +375,14 @@ class InterpretationService:
             return "Moderada"
         else:
             return "Baixa"
+
+    def interpret_domination(self, index: float) -> str:
+        """Public wrapper for domination interpretation."""
+        return self._interpret_domination(index)
+
+    def interpret_power_structure(self, gini: float, top10: float, corr: Optional[float] = None) -> str:
+        """Public wrapper for power structure interpretation."""
+        return self._interpret_power_structure(gini, top10, corr)
 
     def _interpret_sampling_bias(self, df: pd.DataFrame) -> str:
         """Detecta viés de amostragem baseado na distribuição por segmentos."""

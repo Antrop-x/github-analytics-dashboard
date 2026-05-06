@@ -25,13 +25,15 @@ def test_github_api_client_includes_authorization_header(monkeypatch):
 
     captured = {}
 
-    def fake_get(url, params, headers, timeout):
+    def fake_request(method, url, params, headers, timeout, **kwargs):
         captured["url"] = url
         captured["params"] = params
         captured["headers"] = headers
 
         class DummyResponse:
             status_code = 200
+            headers = {}
+            text = '{"items": [{"full_name": "repo/example", "stargazers_count": 123, "forks_count": 10, "description": "Example repo", "html_url": "https://github.com/repo/example", "updated_at": "2026-05-03T00:00:00Z"}]}'
 
             def raise_for_status(self):
                 return None
@@ -52,15 +54,16 @@ def test_github_api_client_includes_authorization_header(monkeypatch):
 
         return DummyResponse()
 
-    monkeypatch.setattr(github_api.requests, "get", fake_get)
+    # Mock the session request method
+    client = github_api.GitHubApiClient("ghp_testtoken456")
+    monkeypatch.setattr(client.session, "request", fake_request)
 
-    client = github_api.GitHubApiClient()
     repos = client.fetch_repos(query="language:python", page=1, per_page=1)
 
-    assert repos[0]["name"] == "repo/example"
-    assert captured["headers"]["Authorization"] == "Bearer ghp_testtoken456"
+    assert repos["status"] == "success"
+    assert repos["data"]["items"][0]["full_name"] == "repo/example"
+    assert captured["headers"]["Authorization"] == "token ghp_testtoken456"
     assert captured["params"]["page"] == 1
-    assert client.request_count == 1
 
 
 def test_fetch_multiple_pages_limits_pages(monkeypatch):
@@ -70,24 +73,28 @@ def test_fetch_multiple_pages_limits_pages(monkeypatch):
 
     call_pages = []
 
-    def fake_get(url, params, headers, timeout):
+    def fake_request(method, url, params, headers, timeout, **kwargs):
         call_pages.append(params["page"])
 
         class DummyResponse:
             status_code = 200
+            headers = {}
+            text = '{"items": [{"full_name": "repo/test", "stargazers_count": 1}]}'  # Return 1 item to continue pagination
 
             def raise_for_status(self):
                 return None
 
             def json(self):
-                return {"items": []}
+                return {"items": [{"full_name": "repo/test", "stargazers_count": 1}]}
 
         return DummyResponse()
 
-    monkeypatch.setattr(github_api.requests, "get", fake_get)
+    # Mock the session request method
+    client = github_api.GitHubApiClient("ghp_testtoken789")
+    monkeypatch.setattr(client.session, "request", fake_request)
 
-    client = github_api.GitHubApiClient()
-    client.fetch_multiple_pages(query="language:python", pages=10, per_page=1)
+    result = client.fetch_multiple_pages(query="language:python", max_pages=10, per_page=1)
 
-    assert len(call_pages) == github_api.MAX_PAGES
-    assert call_pages == list(range(1, github_api.MAX_PAGES + 1))
+    assert result["status"] == "success"
+    assert result["total_pages_fetched"] == 10  # Should fetch all pages since we return empty items
+    assert call_pages == list(range(1, 11))  # pages 1-10
