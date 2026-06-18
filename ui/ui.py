@@ -120,11 +120,24 @@ def render_overview(df: pd.DataFrame, mode: str, analysis: AnalysisResult, rate_
     col1, col2 = st.columns(2)
     name, value, rank_label = get_top_hegemonic_repo(df)
 
+    # Detectar se é uma Awesome-List/Curadoria
+    awesome_keywords = ["awesome", "curated", "list"]
+    is_awesome = False
+    awesome_icon = ""
+    if name:
+        name_lower = name.lower()
+        for kw in awesome_keywords:
+            if kw in name_lower:
+                is_awesome = True
+                break
+    if is_awesome:
+        awesome_icon = "<span style='font-size:1.2em;' title='Curadoria/Awesome-List'>📚</span> "
+
     with col1:
         st.markdown(f"""
         <div class="critico-card">
             <span class="badge-status">Hegemonia Detectada</span>
-            <h2 style="color:white; margin:10px 0;">{name}</h2>
+            <h2 style="color:white; margin:10px 0;">{awesome_icon}{name}</h2>
             <p style="color:#8b949e;">Índice de Hegemonia: {value:.2f}</p>
             <p style="color:#8b949e;">{rank_label}</p>
         </div>
@@ -394,6 +407,9 @@ def render_inequality_section(df: pd.DataFrame, analysis: AnalysisResult, debug_
         gini = analysis.interpretation.get('gini_coefficient')
         if gini is not None:
             st.metric("Coeficiente de Gini", f"{gini:.3f}")
+            # Nota de RH sobre barreiras de entrada
+            if gini > 0.6:
+                st.caption("🔎 Um Gini alto pode indicar barreiras de entrada para novos talentos ou projetos menores.")
     with col2:
         top10 = analysis.interpretation.get('top10_concentration')
         if top10 is not None:
@@ -402,34 +418,37 @@ def render_inequality_section(df: pd.DataFrame, analysis: AnalysisResult, debug_
         dom_index = analysis.interpretation.get('domination_index')
         if dom_index is not None:
             st.metric("Índice de Dominação", f"{dom_index:.3f}")
-    
+
     # Classificações
     inequality_level = analysis.interpretation.get('inequality_level', 'Indefinida')
     domination_level = analysis.interpretation.get('domination_level', 'Indefinida')
     if analysis.interpretation.get('gini_coefficient') is not None:
         st.info(f"⚖️ Desigualdade: **{inequality_level}** | 🏛️ Dominação: **{domination_level}**")
-    
-    # Texto analítico
-    st.markdown("### Interpretação")
-    st.info(analysis.interpretation['summary'])
-    
-    # Gráficos lado a lado
+
+    # Gráfico da Curva de Lorenz e Interpretação Analítica lado a lado
     if not df.empty and "stars" in df.columns:
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            # Curva de Lorenz
+        col_lorenz, col_interp = st.columns([1, 1])
+        with col_lorenz:
             st.markdown("### Curva de Lorenz")
             from core.metrics import curva_lorenz
             x_lorenz, y_lorenz = curva_lorenz(df["stars"])
             fig_lorenz = go.Figure()
             fig_lorenz.add_trace(go.Scatter(x=x_lorenz, y=y_lorenz, mode='lines', name='Distribuição Real'))
             fig_lorenz.add_trace(go.Scatter(x=[0, 1], y=[0, 1], mode='lines', name='Igualdade Perfeita', line=dict(dash='dash')))
-            fig_lorenz.update_layout(title="Curva de Lorenz - Distribuição de Visibilidade", xaxis_title="Proporção da População", yaxis_title="Proporção das Estrelas")
-            st.plotly_chart(fig_lorenz, width='stretch')
-        
-        with col2:
-            # Gráfico de Pareto
+            fig_lorenz.update_layout(
+                title="Curva de Lorenz - Distribuição de Visibilidade",
+                xaxis_title="Percentual Acumulado de Repositórios",
+                yaxis_title="Percentual Acumulado de Estrelas",
+                legend_title_text="Legenda"
+            )
+            st.plotly_chart(fig_lorenz, use_container_width=True)
+        with col_interp:
+            st.markdown("### Interpretação Analítica")
+            st.info(analysis.interpretation['summary'])
+
+        # Gráfico de Pareto e Log-Log abaixo
+        col_pareto, col_loglog = st.columns([1, 1])
+        with col_pareto:
             st.markdown("### Gráfico de Pareto")
             df_sorted = df.sort_values("stars", ascending=False).head(20)  # Top 20 para legibilidade
             fig_pareto = go.Figure()
@@ -440,17 +459,25 @@ def render_inequality_section(df: pd.DataFrame, analysis: AnalysisResult, debug_
                 title="Gráfico de Pareto - Concentração de Estrelas",
                 xaxis_title="Repositórios",
                 yaxis=dict(title="Estrelas"),
-                yaxis2=dict(title="Percentual Acumulado", overlaying='y', side='right'),
+                yaxis2=dict(title="Percentual Acumulado de Estrelas", overlaying='y', side='right'),
+                legend_title_text="Legenda",
                 showlegend=True
             )
-            st.plotly_chart(fig_pareto, width='stretch')
-        # Gráfico Log-Log
-        st.markdown("### Distribuição Log-Log")
-        ranks = range(1, len(df) + 1)
-        fig_loglog = px.scatter(x=ranks, y=df["stars"].sort_values(ascending=False), log_x=True, log_y=True)
-        fig_loglog.update_layout(title="Distribuição Log-Log - Ranking vs. Estrelas", xaxis_title="Ranking", yaxis_title="Estrelas")
-        st.plotly_chart(fig_loglog, width='stretch')
-        
+            st.plotly_chart(fig_pareto, use_container_width=True)
+        with col_loglog:
+            st.markdown("""
+            <div style='display: flex; align-items: center; gap: 0.5em;'>
+                <span style='background: #f85149; color: white; padding: 2px 10px; border-radius: 8px; font-size: 1em; font-weight: bold;'>Destaque</span>
+                <span style='font-size:1.2em;'>📈</span>
+                <span style='font-size:1em; color:#f85149; font-weight:bold;'>Distribuição Log-Log</span>
+            </div>
+            <span style='font-size:0.95em; color:#8b949e;'>Esta visualização aplica uma transformação logarítmica a ambos os eixos para avaliar a proporcionalidade na distribuição de visibilidade. Ela permite testar visualmente a aderência dos dados a modelos de escala livre (como a Lei de Zipf ou distribuições de Pareto), facilitando a identificação do coeficiente de decaimento da atenção na cauda do ecossistema.</span>
+            """, unsafe_allow_html=True)
+            ranks = range(1, len(df) + 1)
+            fig_loglog = px.scatter(x=ranks, y=df["stars"].sort_values(ascending=False), log_x=True, log_y=True)
+            fig_loglog.update_layout(title="Distribuição Log-Log - Ranking vs. Estrelas", xaxis_title="Ranking", yaxis_title="Estrelas", plot_bgcolor="#fff0f0")
+            st.plotly_chart(fig_loglog, use_container_width=True)
+
         # Novo gráfico: Queda de Visibilidade por Ranking
         st.markdown("### Queda de Visibilidade por Ranking")
         plot_rank_decay(df)

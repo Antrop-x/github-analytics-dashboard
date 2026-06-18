@@ -44,7 +44,7 @@ def render_main_layout(
     # Header
     st.title("📊 Observatório do Trabalho Digital")
     st.caption("Interface de leitura da infraestrutura do GitHub como sistema de produção simbólica e material.")
-    st.divider()
+    st.divider( )
     
     # Seções principais
     render_overview_section(df, mode, analysis, rate_limited)
