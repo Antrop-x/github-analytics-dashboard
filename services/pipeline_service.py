@@ -32,44 +32,28 @@ class CacheEntry:
         return self.value
 
 
-# Cache global com TTL
-_fetch_cache: Dict[str, CacheEntry] = {}
-
-# Singleton de client para evitar recriar a cada chamada
-_github_client: Optional[GitHubApiClient] = None
-
-
-def _get_client() -> GitHubApiClient:
-    """Retorna ou cria um cliente singleton do GitHub."""
-    global _github_client
-    if _github_client is None:
-        _github_client = GitHubApiClient()
-    return _github_client
-
-
 def _make_cache_key(query: str, pages: int, sort: str) -> str:
     """Gera chave de cache a partir dos parâmetros."""
     return f"{query}:{pages}:{sort}"
 
 
-def _cached_fetch(query: str, pages: int, sort: str) -> Tuple[List[Dict], bool]:
+def _cached_fetch(cache: Dict[str, CacheEntry], client: GitHubApiClient, query: str, pages: int, sort: str, use_cache: bool = True) -> Tuple[List[Dict], bool]:
     """
     Busca com cache com TTL. Retorna (dados, rate_limited).
     Cache expira em 5 minutos ou se houver rate limit.
     """
     cache_key = _make_cache_key(query, pages, sort)
     
-    # Verificar cache válido
-    if cache_key in _fetch_cache:
-        cached = _fetch_cache[cache_key].get()
-        if cached is not None:
-            logger.debug(f"Cache HIT para query={query}, pages={pages}")
-            return cached
+    if use_cache:
+        # Verificar cache válido
+        if cache_key in cache:
+            cached = cache[cache_key].get()
+            if cached is not None:
+                logger.debug(f"Cache HIT para query={query}, pages={pages}")
+                return cached
     
     logger.debug(f"Cache MISS para query={query}, pages={pages}. Buscando da API...")
     
-    # Buscar da API (sem retry aqui, retry está na infraestrutura)
-    client = _get_client()
     logger.debug(f"Iniciando fetch_multiple_pages: query={query}, pages={pages}, sort={sort}")
     result = client.fetch_multiple_pages(query=query, pages=pages, sort=sort)
     items = result.get("items", [])
@@ -85,7 +69,7 @@ def _cached_fetch(query: str, pages: int, sort: str) -> Tuple[List[Dict], bool]:
         if validate_repository_data(df):
             normalized_items = df.to_dict("records")
             cache_entry = CacheEntry((normalized_items, rate_limited), ttl_seconds=300)
-            _fetch_cache[cache_key] = cache_entry
+            cache[cache_key] = cache_entry
             logger.debug(f"Dados válidos cacheados: {len(normalized_items)} itens")
         else:
             logger.warning("Dados não validados, não armazenando cache.")
@@ -194,7 +178,9 @@ def ingest_repositories(
     pages: int = 2,
     sort: str = "stars",
     use_cache: bool = True,
-    api_client: Optional[RepositoryApiClient] = None
+    api_client: Optional[RepositoryApiClient] = None,
+    cache: Optional[Dict[str, CacheEntry]] = None,
+    client: Optional[GitHubApiClient] = None
 ) -> Dict:
     """
     Orquestra coleta e processamento de repositórios.
@@ -218,12 +204,15 @@ def ingest_repositories(
     """
     import datetime
     
+    cache = cache if cache is not None else {}
+    client = client if client is not None else (api_client or GitHubApiClient())
+
     start_time = time.time()
     logger.info(f"Iniciando ingestão: query='{query}', pages={pages}, sort='{sort}', cache={use_cache}")
     
     try:
         # Buscar dados (retry está na infraestrutura agora)
-        raw_data, rate_limited = _cached_fetch(query, pages, sort)
+        raw_data, rate_limited = _cached_fetch(cache, client, query, pages, sort, use_cache)
         fetch_time = time.time() - start_time
         logger.info(f"Busca completada em {fetch_time:.2f}s. Coletados {len(raw_data)} registros.")
         
@@ -414,7 +403,7 @@ def ingest_fast(
 
 def check_service_health(api_client: Optional[RepositoryApiClient] = None) -> Dict[str, bool]:
     """Verifica saúde do serviço de API."""
-    client = api_client or _get_client()
+    client = api_client or GitHubApiClient()
     return {
         "service_available": client.health_check()
     }
@@ -434,9 +423,23 @@ class PipelineService:
             settings: Configurações da aplicação
         """
         self.settings = settings
+        self._fetch_cache: Dict[str, CacheEntry] = {}
+        self._github_client: Optional[GitHubApiClient] = None
+
+    def _get_client(self) -> GitHubApiClient:
+        """Retorna ou cria um cliente do GitHub para esta instância."""
+        if self._github_client is None:
+            self._github_client = GitHubApiClient()
+        return self._github_client
+
+    def _cached_fetch(self, query: str, pages: int, sort: str, use_cache: bool = True, api_client: Optional[RepositoryApiClient] = None) -> Tuple[List[Dict], bool]:
+        """Busca com cache usando o estado da instância ou o cliente injetado."""
+        client = api_client or self._get_client()
+        return _cached_fetch(self._fetch_cache, client, query, pages, sort, use_cache)
 
     def ingest_repositories(self, query: str = "language:python", pages: int = 2,
-                           sort: str = "stars", use_cache: bool = True) -> Dict:
+                           sort: str = "stars", use_cache: bool = True,
+                           api_client: Optional[RepositoryApiClient] = None) -> Dict:
         """
         Método principal de ingestão de repositórios.
 
@@ -445,11 +448,20 @@ class PipelineService:
             pages: Número de páginas a coletar
             sort: Ordenação dos resultados
             use_cache: Se deve usar cache
+            api_client: Cliente de API injetado (para testes ou alternativas)
 
         Returns:
             Dicionário com dados coletados e metadados
         """
-        return ingest_repositories(query=query, pages=pages, sort=sort, use_cache=use_cache)
+        return ingest_repositories(
+            query=query,
+            pages=pages,
+            sort=sort,
+            use_cache=use_cache,
+            api_client=api_client,
+            cache=self._fetch_cache,
+            client=self._get_client()
+        )
 
 # ==============================
 # METADATA DO SERVIÇO
