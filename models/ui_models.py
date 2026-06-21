@@ -4,6 +4,7 @@ UI Models - Dataclasses para tipagem de dados trafegados entre camadas
 
 from dataclasses import dataclass, field
 from typing import Dict, List, Any, Optional
+import pandas as pd
 
 
 @dataclass
@@ -30,6 +31,18 @@ class StorageInfo:
     def health_text(self) -> str:
         """Texto formatado de saúde do storage"""
         return f"Saúde do storage: {self.health_percentage:.1f}%"
+
+
+@dataclass
+class DashboardContract:
+    """Contrato de dados prontos para o dashboard."""
+    data: pd.DataFrame
+    hegemony: pd.DataFrame
+    analysis: Any
+    storage_info: StorageInfo
+    rate_limited: bool = False
+    status: str = "success"
+    records: int = 0
 
 
 @dataclass

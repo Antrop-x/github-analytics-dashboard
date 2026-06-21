@@ -1,9 +1,7 @@
 ﻿import streamlit as st
 import pandas as pd
-from typing import Dict, Any, Optional, Union
+from typing import Any, Dict, Optional, Union
 from core.metrics import get_top_hegemonic_repo
-from services.interpretation_service import AnalysisResult
-from services.storage_inspection_service import StorageInspectionService
 from models.ui_models import StorageInfo
 import plotly.graph_objects as go
 import plotly.express as px
@@ -86,7 +84,7 @@ def render_header():
     """, unsafe_allow_html=True)
 
 
-def render_overview(df: pd.DataFrame, mode: str, analysis: AnalysisResult, rate_limited: bool = False):
+def render_overview(df: pd.DataFrame, mode: str, analysis: Any, rate_limited: bool = False):
     mode_labels = get_mode_labels(mode)
     
     st.markdown(f"## {mode_labels['title']} ⓘ")
@@ -354,7 +352,7 @@ def render_reflexivity(storage_info: Union[StorageInfo, Dict[str, Any]]):
 
 
 
-def render_inequality_section(df: pd.DataFrame, analysis: AnalysisResult, debug_mode: bool = False):
+def render_inequality_section(df: pd.DataFrame, analysis: Any, debug_mode: bool = False):
     st.markdown("## 📈 Análise de Desigualdade ⓘ")
     with st.popover("Sobre a análise de desigualdade"):
         st.markdown("""
@@ -520,26 +518,17 @@ class GitHubAnalyticsUI:
     
     def __init__(
         self,
-        pipeline_service,
-        interpretation_service,
-        storage_service=None,
-        storage_inspection_service=None,
+        dashboard_service,
         settings=None
     ):
         """
         Inicializa a UI com dependências injetadas.
         
         Args:
-            pipeline_service: Serviço de pipeline para coleta de dados
-            interpretation_service: Serviço de interpretação
-            storage_service: Serviço de armazenamento (fallback)
-            storage_inspection_service: Serviço de inspeção de storage
+            dashboard_service: Serviço de aplicação do dashboard
             settings: Configurações da aplicação
         """
-        self.pipeline_service = pipeline_service
-        self.interpretation_service = interpretation_service
-        self.storage_service = storage_service
-        self.storage_inspection_service = storage_inspection_service
+        self.dashboard_service = dashboard_service
         self.settings = settings
     
     def run(self):
@@ -551,59 +540,32 @@ class GitHubAnalyticsUI:
         query, pages, sort, mode, debug_mode = sidebar_controls()
         render_header()
         
-        # Status visual durante a coleta
+        # Status visual durante a coleta e preparo de dados
         with st.status("🔄 Coletando dados do ecossistema GitHub...", expanded=True) as status:
-            st.write("📡 Buscando repositórios...")
-            
-            # Coletar dados via pipeline service
-            result = self.pipeline_service.ingest_repositories(
-                query=query, 
-                pages=pages, 
-                sort=sort, 
+            dashboard_contract = self.dashboard_service.prepare_dashboard(
+                query=query,
+                pages=pages,
+                sort=sort,
                 use_cache=True
             )
-            
-            st.write("✅ Repositórios coletados com sucesso")
-            st.write("🔨 Normalizando e validando dados...")
-            
-            df = result["data"]
-            heg = result["hegemony"]
-            rate_limited = result["rate_limited"]
-            
+
+            df = dashboard_contract.data
+            heg = dashboard_contract.hegemony
+            rate_limited = dashboard_contract.rate_limited
+            analysis = dashboard_contract.analysis
+            storage_info = dashboard_contract.storage_info
+
             if df.empty:
                 status.update(label="❌ Nenhum dado disponível", state="error", expanded=False)
                 render_empty("Sem dados disponíveis para este recorte.")
                 st.stop()
-            
-            st.write("📊 Calculando métricas...")
-            
-            # Calcular Gini
-            from core.metrics import gini
-            gini_value = gini(df["stars"]) if not df.empty else None
-            
-            st.write("🧠 Gerando interpretações analíticas...")
-            
-            # Criar AnalysisResult via interpretation service
-            analysis = self.interpretation_service.create_analysis_result(df, heg, gini_value)
-            
-            st.write("💾 Carregando informações de storage...")
-            
-            # Capturar informações de storage para renderização
-            storage_info = self._load_storage_info()
-            
+
             status.update(label="✅ Ingestão completa! Renderizando dashboard...", state="complete", expanded=False)
         
         # Renderizar usando apenas o contrato AnalysisResult
         self._render_dashboard(df, heg, mode, analysis, rate_limited, debug_mode, storage_info)
     
-    def _load_storage_info(self) -> StorageInfo:
-        if self.storage_inspection_service is not None:
-            return self.storage_inspection_service.inspect()
-        if self.storage_service is not None:
-            return StorageInspectionService(self.storage_service).inspect()
-        raise RuntimeError("Storage inspection service is not available")
-
-    def _render_dashboard(self, df: pd.DataFrame, heg: pd.DataFrame, mode: str, analysis: AnalysisResult, 
+    def _render_dashboard(self, df: pd.DataFrame, heg: pd.DataFrame, mode: str, analysis: Any, 
                          rate_limited: bool, debug_mode: bool, storage_info: StorageInfo):
         """
         Renderiza o dashboard completo usando apenas AnalysisResult.

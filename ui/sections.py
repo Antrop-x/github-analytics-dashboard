@@ -6,7 +6,6 @@ import streamlit as st
 import pandas as pd
 from typing import Dict, Any
 from models.ui_models import StorageInfo, OverviewMetrics, InequalityMetrics
-from services.interpretation_service import AnalysisResult
 from ui.components import (
     render_section_header,
     render_status_badge,
@@ -19,7 +18,7 @@ from ui.components import (
 from core.metrics import get_top_hegemonic_repo, top_concentration
 
 
-def render_overview_section(df: pd.DataFrame, mode: str, analysis: AnalysisResult, 
+def render_overview_section(df: pd.DataFrame, mode: str, analysis: Any, 
                            rate_limited: bool = False):
     """
     Renderiza seção de overview/resumo.
@@ -102,7 +101,7 @@ def render_hegemony_section(heg: Dict[str, Any]):
         st.write(heg)
 
 
-def render_inequality_section(df: pd.DataFrame, analysis: AnalysisResult, 
+def render_inequality_section(df: pd.DataFrame, analysis: Any, 
                             debug_mode: bool = False):
     """
     Renderiza seção de desigualdade.

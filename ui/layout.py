@@ -4,8 +4,8 @@ UI Layout - Orchestração do layout principal
 
 import streamlit as st
 import pandas as pd
+from typing import Any
 from models.ui_models import StorageInfo
-from services.interpretation_service import AnalysisResult
 from ui.theme import apply_theme
 from ui.sections import (
     render_overview_section,
@@ -20,7 +20,7 @@ from ui.sections import (
 def render_main_layout(
     df: pd.DataFrame,
     heg: pd.DataFrame,
-    analysis: AnalysisResult,
+    analysis: Any,
     storage_info: StorageInfo,
     mode: str,
     debug_mode: bool = False,
