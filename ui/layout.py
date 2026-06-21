@@ -7,7 +7,7 @@ import pandas as pd
 from typing import Any
 from models.ui_models import StorageInfo
 from ui.theme import apply_theme
-from ui.sections import (
+from ui.presenters import (
     render_overview_section,
     render_data_table_section,
     render_hegemony_section,

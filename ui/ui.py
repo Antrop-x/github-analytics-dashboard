@@ -6,6 +6,7 @@ from models.ui_models import StorageInfo
 import plotly.graph_objects as go
 import plotly.express as px
 from core.metrics import top_concentration, analyze_segments
+from ui.views import get_mode_labels
 
 
 def configure_page():
@@ -22,40 +23,6 @@ def apply_theme():
     """Aplica tema customizado à interface"""
     from ui.theme import apply_theme as apply_theme_impl
     apply_theme_impl()
-
-
-
-def get_mode_labels(mode: str) -> dict:
-    """
-    Mapeia o modo de UI para chaves de backend e retorna labels apropriados.
-    """
-    mode_map = {
-        "Modo Exploratório": "exploratory",
-        "Modo Analítico": "analytical"
-    }
-    
-    mode_key = mode_map.get(mode, "exploratory")
-    
-    labels = {
-        "exploratory": {
-            "title": "📊 Visão Exploratória",
-            "description": "Análise inicial dos dados coletados. Foco em descoberta e padrões gerais.",
-            "metrics_focus": "Métricas básicas de distribuição",
-            "interpretation_style": "Descritivo e acessível",
-            "appropriation_label": "Taxa de Reuso",
-            "density_label": "Visibilidade Média"
-        },
-        "analytical": {
-            "title": "🔬 Análise Profunda",
-            "description": "Análise estatística rigorosa com métricas avançadas e interpretações estruturais.",
-            "metrics_focus": "Índices de desigualdade e dominação",
-            "interpretation_style": "Técnico e detalhado",
-            "appropriation_label": "Taxa de Apropriação Técnica",
-            "density_label": "Densidade Simbólica"
-        }
-    }
-    
-    return labels[mode_key]
 
 
 def sidebar_controls():
