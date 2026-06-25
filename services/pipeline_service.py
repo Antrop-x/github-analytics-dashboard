@@ -434,34 +434,19 @@ class PipelineService:
     """
     Serviço de Pipeline - Coordena coleta e processamento de dados.
     Isola lógica de pipeline da UI e interpretação.
-    
+
     Depende de:
     - RepositoryApiClient: Abstração para acesso a repositórios (inversão de controle)
     """
 
-    def __init__(self, settings, repository_client: Optional[RepositoryApiClient] = None):
+    def __init__(self, settings):
         """
         Inicializa o serviço de pipeline com configurações.
 
         Args:
             settings: Configurações da aplicação
-            repository_client: Cliente de repositório injetado (opcional)
-                              Se None, será criado um GitHubRepositoryAdapter
         """
         self.settings = settings
-        self._fetch_cache: Dict[str, CacheEntry] = {}
-        self._repository_client: Optional[RepositoryApiClient] = repository_client
-
-    def _get_client(self) -> RepositoryApiClient:
-        """Retorna ou cria um cliente de repositório para esta instância."""
-        if self._repository_client is None:
-            self._repository_client = GitHubRepositoryAdapter()
-        return self._repository_client
-
-    def _cached_fetch(self, query: str, pages: int, sort: str, use_cache: bool = True, api_client: Optional[RepositoryApiClient] = None) -> Tuple[List[Dict], bool]:
-        """Busca com cache usando o estado da instância ou o cliente injetado."""
-        client = api_client or self._get_client()
-        return _cached_fetch(self._fetch_cache, client, query, pages, sort, use_cache)
 
     def ingest_repositories(self, query: str = "language:python", pages: int = 2,
                            sort: str = "stars", use_cache: bool = True,
@@ -484,9 +469,7 @@ class PipelineService:
             pages=pages,
             sort=sort,
             use_cache=use_cache,
-            api_client=api_client,
-            cache=self._fetch_cache,
-            client=self._get_client()
+            api_client=api_client
         )
 
 # ==============================
